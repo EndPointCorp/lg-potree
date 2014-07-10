@@ -26,6 +26,8 @@
 	</style>
 
 	<script src="../libs/three.js/build/three.js"></script>
+	<script src="../libs/three-lg.js"></script>
+	<script src="../libs/socket.io/socket.io.js"></script>
 	<script src="../libs/other/OrbitControls.js"></script>
 	<script src="../libs/other/stats.min.js"></script>
 	<script src="../libs/other/dat.gui.min.js"></script>
@@ -59,7 +61,8 @@
 		var cameraCube, sceneCube;
 		var stats;
 		var pointcloudMaterial;
-		
+        var visnodes = document.getElementById("lblNumVisibleNodes");
+        var vispoints = document.getElementById("lblNumVisiblePoints");
 		function loadSkybox(){
 			cameraCube = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 100000 );
 			sceneCube = new THREE.Scene();
@@ -115,8 +118,11 @@
 				pointcloudMaterial.size = value;
 			});
 		}
+
+        var scene, camera;
 		
-		function initThree(){
+		var initThree = function (){
+            console.log("This is the initialization function");
 			stats = new Stats();
 			stats.domElement.style.position = 'absolute';
 			stats.domElement.style.top = '0px';
@@ -152,8 +158,9 @@
 			//pointCloud.moveToGroundPlane();
 			//scene.add(pointCloud);
 			
-			for(var i = -2; i <= 2; i++){
-				for(var j = -2; j <= 2; j++){
+var i = 0; var j = 0;
+//			for(var i = -2; i <= 2; i++){
+//				for(var j = -2; j <= 2; j++){
 					var pointcloud = new Potree.PointCloudOctree(pco, pointcloudMaterial);
 					pointcloud.LOD = defaultLOD;
 					//pointcloud.rotation.set(Math.PI,-1.2,0);
@@ -165,13 +172,22 @@
 					
 					pointclouds.push(pointcloud);
 					scene.add(pointcloud);
-				}
-			}
+//				}
+//			}
+            return { "scene" : scene, "camera" : camera, "renderer" : renderer };
 		}
 		
-		function render() {
+		render = function (initialScene) {
 					
-			requestAnimationFrame(render);
+        //    var camera = initialScene.camera;
+        //    var scene = initialScene.scene;
+            if (undefined !== render) {
+                requestAnimationFrame(render);
+            }
+            else {
+                // for the slave
+                requestAnimationFrame(THREELG.render);
+            }
 			
 			var numVisibleNodes = 0;
 			var numVisiblePoints = 0;
@@ -188,15 +204,22 @@
 			
 			renderer.render(scene, camera);
 			
-			document.getElementById("lblNumVisibleNodes").innerHTML = "visible nodes: " + numVisibleNodes;
-			document.getElementById("lblNumVisiblePoints").innerHTML = "visible points: " + Potree.utils.addCommas(numVisiblePoints);
-			
-			stats.update();
-			controls.update(0.1);
+            if (undefined !== visnodes) {
+                visnodes.innerHTML = "visible nodes: " + numVisibleNodes;
+                vispoints.innerHTML = "visible points: " + Potree.utils.addCommas(numVisiblePoints);
+                stats.update();
+                controls.update(0.1);
+            }
 			
 		};
 		
-		initThree();
+        var preRenderMaster = function () {};
+        var preRenderSlave = function () {};
+
+        THREE.lg_init('appname', preRenderMaster, preRenderSlave, initThree, render, true);
+		a = initThree();
+        scene = a.scene;
+        camera = a.camera;
 		initGUI();
 		render();
 		
