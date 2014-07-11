@@ -25,6 +25,10 @@
 		var pointclouds = [];
         var render;
         var visnodes;
+        var changeEvent = function(event) {
+            newPosition = event.target.object.position;
+        }
+		
 		function loadSkybox(){
 			cameraCube = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 100000 );
 			sceneCube = new THREE.Scene();

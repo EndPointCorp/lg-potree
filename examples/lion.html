@@ -1,4 +1,4 @@
-
+<!-- Next step: Make rotations transfer to the slave -->
 
 <html>
 <head>
@@ -120,6 +120,12 @@
 		}
 
         var scene, camera;
+        var newPosition, newScale;
+
+        var changeEvent = function(event) {
+            newPosition = event.target.object.position;
+            newScale = event.target.scale;
+        }
 		
 		var initThree = function (){
             console.log("This is the initialization function");
@@ -145,8 +151,9 @@
 			camera.position.x = 15;
 			controls = new THREE.OrbitControls(camera, renderer.domElement);
 			controls.target.set( 0, 3, 0 );
+            controls.addEventListener('change', changeEvent);
 			camera.lookAt(controls.target);
-			
+
 			pointcloudMaterial = new THREE.PointCloudMaterial( { size: defaultPointSize, vertexColors: true } );
 			
 			//// load pointcloud
@@ -213,8 +220,16 @@ var i = 0; var j = 0;
 			
 		};
 		
-        var preRenderMaster = function () {};
-        var preRenderSlave = function () {};
+        var preRenderMaster = function () {
+            return {
+                position: newPosition,
+                scale: newScale
+            };
+        };
+
+        var preRenderSlave = function (a) {
+            camera.position = a.position;
+        };
 
         THREE.lg_init('appname', preRenderMaster, preRenderSlave, initThree, render, true);
 		a = initThree();
