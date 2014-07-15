@@ -58,7 +58,7 @@
 		var cube;
 		var scene;
 		var pointclouds = [];
-		var cameraCube, sceneCube;
+		var cameraCube, sceneCube, controls;
 		var stats;
 		var pointcloudMaterial;
         var visnodes = document.getElementById("lblNumVisibleNodes");
@@ -120,11 +120,29 @@
 		}
 
         var scene, camera;
-        var newPosition, newScale;
+        var changeArgs = { changes: [] };
+
+        var preRenderMaster = function () {
+            a = changeArgs;
+            changeArgs = { changes: [] };
+            return a;
+        };
+
+        var preRenderSlave = function (a) {
+            if (a.changes.length != 0) {
+                console.log("Received: " + JSON.stringify(a));
+                a.changes.map( function (a) {
+                    controls.manualUpdate(a);
+                });
+            };
+        };
 
         var changeEvent = function(event) {
-            newPosition = event.target.object.position;
-            newScale = event.target.scale;
+            // Any chance of missing changes, with this? For instance,
+            // changeArgs locally gets overwritten before it gets sent?
+            // Ok, yes, probably there's the possibility. Is it likely enough
+            // to worry about?
+            changeArgs.changes.push(event.target.change);
         }
 		
 		var initThree = function (){
@@ -151,7 +169,9 @@
 			camera.position.x = 15;
 			controls = new THREE.OrbitControls(camera, renderer.domElement);
 			controls.target.set( 0, 3, 0 );
-            controls.addEventListener('change', changeEvent);
+            if (THREELG.master) {
+                controls.addEventListener('change', changeEvent);
+            }
 			camera.lookAt(controls.target);
 
 			pointcloudMaterial = new THREE.PointCloudMaterial( { size: defaultPointSize, vertexColors: true } );
@@ -219,17 +239,6 @@ var i = 0; var j = 0;
             }
 			
 		};
-		
-        var preRenderMaster = function () {
-            return {
-                position: newPosition,
-                scale: newScale
-            };
-        };
-
-        var preRenderSlave = function (a) {
-            camera.position = a.position;
-        };
 
         THREE.lg_init('appname', preRenderMaster, preRenderSlave, initThree, render, true);
 		a = initThree();

@@ -70,10 +70,16 @@ THREE.OrbitControls = function ( object, domElement ) {
 	// The four arrow keys
 	this.keys = { LEFT: 37, UP: 38, RIGHT: 39, BOTTOM: 40 };
 
+    this.change = {};
+
 	////////////
 	// internals
 
 	var scope = this;
+
+    var skip_zero_events = true;
+
+    var suppress_event = false;
 
 	var EPS = 0.000001;
 
@@ -268,20 +274,55 @@ THREE.OrbitControls = function ( object, domElement ) {
 
 		this.object.lookAt( this.target );
 
-		thetaDelta = 0;
-		phiDelta = 0;
-		scale = 1;
-		pan.set( 0, 0, 0 );
 
-		if ( Math.abs(lastPosition.distanceTo( this.object.position )) > 1e-5 ) {
+        run_event = false;
+        if (thetaDelta !== 0 || phiDelta !== 0 || scale !== 1 || pan.x !== 0 || pan.y !== 0 || pan.z !== 0) {
+            run_event = true;
+            skip_zero_events = false;
+        }
+        else {
+            if (! skip_zero_events) {
+                run_event = true;
+                skip_zero_events = true;
+            }
+        }
+		if (! suppress_event && run_event) {
+
+            this.change = {
+                thetaDelta: thetaDelta,
+                phiDelta:   phiDelta,
+                scale:      scale
+            };
+            // XXX Should periodically send over absolute coordinates -- perhaps at each zero change message
+            this.change.pan = new THREE.Vector3();
+            this.change.pan.copy(pan);
 
 			this.dispatchEvent( changeEvent );
+            console.log("New event: " + JSON.stringify(this.change));
 
 			lastPosition.copy( this.object.position );
 
 		}
 
+		thetaDelta = 0;
+		phiDelta = 0;
+		scale = 1;
+		pan.set( 0, 0, 0 );
+        suppress_event = false;
+
 	};
+
+    this.manualUpdate = function(args) {
+        if (args.thetaDelta != 0 || args.phiDelta != 0 || args.scale != 1 || args.pan.x != 0 || args.pan.y != 0 || args.pan.z != 0) {
+            console.log("Updating: " + JSON.stringify(args));
+            thetaDelta = args.thetaDelta;
+            phiDelta = args.phiDelta;
+            scale = args.scale;
+            suppress_event = true;
+            pan.set(args.pan.x, args.pan.y, args.pan.z);
+            this.update();
+        }
+    };
 
 
 	this.reset = function () {
