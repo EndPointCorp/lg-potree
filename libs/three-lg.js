@@ -1,11 +1,12 @@
 var VIEWSYNC = VIEWSYNC || {};
-var THREELG = { 'viewsync': undefined };
+var THREELG = { viewsync: undefined, justInitialized: false };
 
 VIEWSYNC.Connection = function(appname, master, url) {
   var viewsync = io.connect(typeof url === 'undefined' ? '/viewsync' : url);
 
   function sendInitialization() {
     console.log('Sending initialization to slave');
+    THREELG.justInitialized = true;
     viewsync.emit('pov', {
         'type': 'initialization',
         'prerenderSlave': THREELG.prerenderSlave ? THREELG.prerenderSlave.toString() : undefined,
@@ -55,7 +56,6 @@ VIEWSYNC.Connection = function(appname, master, url) {
   });
 
   this.sendPov = function(pov) {
-    //console.debug('viewsync send pov:', pov);
     viewsync.emit('pov', pov);
   }
 
@@ -102,7 +102,10 @@ THREE.WebGLRenderer = function() {
 
         if (THREELG.master) {
             if (THREELG.prerenderMaster !== undefined) { a = THREELG.prerenderMaster(); }
-            THREELG.viewsync.sendPov({ 'type': 'render', 'prerenderArgs': a });
+            if (a.skipSlaveRender === undefined) {
+                THREELG.justInitialized = false;
+                THREELG.viewsync.sendPov({ 'type': 'render', 'prerenderArgs': a });
+            }
         }
         return that.__old_render( scene, camera, renderTarget, forceClear );
     }

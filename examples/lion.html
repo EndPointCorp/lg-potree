@@ -50,8 +50,17 @@
 	
 	<script>
 		var defaultPointSize = 0.03;
-		var defaultLOD = 15;
+        var guiChanged = false;
+		var defaultLOD = 2;
 		var pointcloudPath = "../resources/pointclouds/lion_takanawa/cloud.js";
+
+        var offsetX = 30 * Math.PI / 180;
+            // Doesn't make any sense to offset from the Y axis, because the
+            // camera always looks along the Y axis
+        var offsetZ = 0;
+        var xAxis = new THREE.Vector3(1, 0, 0);
+        var yAxis = new THREE.Vector3(0, 1, 0);
+        var zAxis = new THREE.Vector3(0, 0, 1);
 	
 		var renderer;
 		var camera;
@@ -70,9 +79,9 @@
 			var path = "../resources/textures/skybox/";
 			var format = ".jpg";
 			var urls = [
-				path + 'px' + format, path + 'nx' + format,
-				path + 'py' + format, path + 'ny' + format,
-				path + 'pz' + format, path + 'nz' + format
+				path + "px" + format, path + "nx" + format,
+				path + "py" + format, path + "ny" + format,
+				path + "pz" + format, path + "nz" + format
 			];
 			
 			var textureCube = THREE.ImageUtils.loadTextureCube( urls, new THREE.CubeRefractionMapping() );
@@ -105,44 +114,78 @@
 				LOD: defaultLOD
 			};
 			
-			var pLOD = gui.add(params, 'LOD', 0.5,20);
+			var pLOD = gui.add(params, "LOD", 0.5,20);
 			pLOD.onChange(function(value){
 				//pointCloud.LOD = value;
+                // XXX set a flag here, so I don't have to compare old and new
+                // LOD and pointsize when deciding whether to send a packet
+                guiChanged = true;
+                changeArgs.LOD = value;
 				for(var i = 0; i < pointclouds.length; i++){
 					pointclouds[i].LOD = value;
 				}
 			});
 			
-			var pPointSize = gui.add(params, 'PointSize', 0.01, 0.1);
+			var pPointSize = gui.add(params, "PointSize", 0.01, 0.1);
 			pPointSize.onChange(function(value){
+                guiChanged = true;
+                changeArgs.pointsize = value;
 				pointcloudMaterial.size = value;
 			});
 		}
 
         var scene, camera;
-        var changeArgs = { changes: [] };
+        var changeArgs     = { LOD: defaultLOD, pointsize: defaultPointSize, target: null, position: null };
+        var lastChangeArgs = { LOD: null, pointsize: null, target: null, position: null };
 
         var preRenderMaster = function () {
-            a = changeArgs;
-            changeArgs = { changes: [] };
-            return a;
+            // Send a packet to the slave if:
+            //  * We've just initialized  -- or --
+            //  * Something has changed on the GUI -- or --
+            //  * Something has changed in the target or the position
+            // Unless changeArgs.position is null
+
+            if ( changeArgs.position !== null && (
+                    THREELG.justInitialized ||
+                    guiChanged              ||
+                    (lastChangeArgs.position != null &&
+                        Math.abs(changeArgs.position.distanceTo(lastChangeArgs.position)) > 1e-5) ||
+                    (lastChangeArgs.target   != null &&
+                        Math.abs(changeArgs.target.distanceTo(lastChangeArgs.target)) > 1e-5)
+                )) {
+                delete changeArgs.skipSlaveRender;
+                guiChanged = false;
+                THREELG.justInitialized = false;
+            }
+            else {
+                changeArgs.skipSlaveRender = 1;
+            }
+       
+            lastChangeArgs.LOD       = changeArgs.LOD;
+            lastChangeArgs.pointsize = changeArgs.pointsize;
+            if (changeArgs.target !== null) {
+                lastChangeArgs.target    = changeArgs.target.clone();
+            }
+            if (changeArgs.position !== null) {
+                lastChangeArgs.position  = changeArgs.position.clone();
+            }
+            return changeArgs;
         };
 
         var preRenderSlave = function (a) {
-            if (a.changes.length != 0) {
-                console.log("Received: " + JSON.stringify(a));
-                a.changes.map( function (a) {
-                    controls.manualUpdate(a);
-                });
-            };
+            console.log(JSON.stringify(a));
+            camera.position.copy(a.position);
+            target = new THREE.Vector3(a.target.x, a.target.y, a.target.z);
+            target.applyAxisAngle(xAxis, offsetX);
+            target.applyAxisAngle(zAxis, offsetZ);
+            camera.lookAt(target);
+            scene.children.forEach(function(c) { c.LOD = a.LOD; });
+            scene.children[0].material.size = a.pointsize;
         };
 
         var changeEvent = function(event) {
-            // Any chance of missing changes, with this? For instance,
-            // changeArgs locally gets overwritten before it gets sent?
-            // Ok, yes, probably there's the possibility. Is it likely enough
-            // to worry about?
-            changeArgs.changes.push(event.target.change);
+            changeArgs.target = event.target.target.clone();
+            changeArgs.position = event.target.object.position.clone();
         }
 		
 		var initThree = function (){
