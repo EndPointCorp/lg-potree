@@ -1,6 +1,6 @@
 # Potree-LG - Liquid Galaxy Enabled WebGL Pointcloud Viewer
 
-An adaptation of<a href="http://potree.org/">Potree</a> for the Liquid Galaxy.
+An adaptation of <a href="http://potree.org/">Potree</a> for the Liquid Galaxy.
 
 Download this repository into peruse-a-rue's node.js server's public directory.
 Point your browser at http://localhost:8086/potree/examples/lion.html. Point another at 
