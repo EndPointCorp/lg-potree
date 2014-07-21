@@ -54,10 +54,7 @@
 		var defaultLOD = 2;
 		var pointcloudPath = "../resources/pointclouds/lion_takanawa/cloud.js";
 
-        var offsetY = 2;
-        var xAxis = new THREE.Vector3(1, 0, 0);
-        var yAxis = new THREE.Vector3(0, 1, 0);
-        var zAxis = new THREE.Vector3(0, 0, 1);
+        var rotationAngle = 30;
 	
 		var renderer;
 		var camera;
@@ -173,17 +170,18 @@
             console.log(JSON.stringify(a));
             camera.position.copy(a.position);
 
-            var lookAt = new THREE.Vector3(a.target.x, a.target.y, a.target.z);
-//            var axis   = camera.up.clone().applyEuler(camera.rotation);
-//            var angle  = Math.PI;
-//            var mat    = new THREE.Matrix4().makeRotationAxis(axis, angle);
-//            var mat = new THREE.Matrix4().makeRotationY(angle);
-//
-//            lookAt.applyMatrix4(mat);
+            // target - position, rotated around the Y, plus position
+            var rotateVec = new THREE.Vector3();
+            //var lookAt = new THREE.Vector3(a.target.x, a.target.y, a.target.z);
 
-//            camera.rotation.y += offsetY;
-            camera.lookAt(lookAt);
-//            camera.matrix.multiply(mat);
+            rotateVec.subVectors(a.target, a.position).
+                applyAxisAngle(
+                    new THREE.Vector3(0, 1, 0),
+                    rotationAngle * Math.PI / 180
+                ).
+                add(a.position);
+
+            camera.lookAt(rotateVec);
 
             scene.children.forEach(function(c) { c.LOD = a.LOD; });
             scene.children[0].material.size = a.pointsize;
