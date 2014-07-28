@@ -26,7 +26,7 @@
 	</style>
 
 	<script src="../libs/three.js/build/three.js"></script>
-	<script src="../libs/three-lg.js"></script>
+	<script src="../libs/lg-three.js"></script>
 	<script src="../libs/socket.io/socket.io.js"></script>
 	<script src="../libs/other/OrbitControls.js"></script>
 	<script src="../libs/other/stats.min.js"></script>
@@ -170,18 +170,16 @@
             console.log(JSON.stringify(a));
             camera.position.copy(a.position);
 
-            // target - position, rotated around the Y, plus position
-            var rotateVec = new THREE.Vector3();
-            //var lookAt = new THREE.Vector3(a.target.x, a.target.y, a.target.z);
-
-            rotateVec.subVectors(a.target, a.position).
-                applyAxisAngle(
-                    new THREE.Vector3(0, 1, 0),
-                    rotationAngle * Math.PI / 180
-                ).
-                add(a.position);
-
-            camera.lookAt(rotateVec);
+            // This copies the logic in THREE.PerspectiveCamera.lookAt(),
+            // adding a rotation component
+            var m1 = new THREE.Matrix4();
+            m1.lookAt(camera.position, controls.target, camera.up);
+            m2 = new THREE.Matrix4();
+            m2.makeRotationY(rotationAngle * Math.PI / 180);
+            m3 = new THREE.Matrix4();
+            m3.multiplyMatrices(m1, m2);
+            camera.quaternion.setFromRotationMatrix(m3);
+            //camera.lookAt(rotateVec);
 
             scene.children.forEach(function(c) { c.LOD = a.LOD; });
             scene.children[0].material.size = a.pointsize;
@@ -190,6 +188,7 @@
         var changeEvent = function(event) {
             changeArgs.target = event.target.target.clone();
             changeArgs.position = event.target.object.position.clone();
+            changeArgs.quaternion = event.target.object.quaternion.clone();
         }
 		
 		var initThree = function (){
@@ -218,6 +217,9 @@
 			controls.target.set( 0, 3, 0 );
             if (THREELG.master) {
                 controls.addEventListener('change', changeEvent);
+            }
+            else {
+                controls.enabled = false;
             }
 			camera.lookAt(controls.target);
 
