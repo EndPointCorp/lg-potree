@@ -1,0 +1,304 @@
+<!-- Next step: Make rotations transfer to the slave -->
+
+<html>
+<head>
+	<title>Lion</title>
+	<style>canvas { width: 100%; height: 100% }</style>
+</head>
+<body style="margin: 0; padding: 0">
+
+	<style type="text/css">
+	
+	.info{
+		color:white;
+		font-weight: bold;
+		text-shadow:  1px  1px 1px black,
+					  1px -1px 1px black,
+					 -1px  1px 1px black,
+					 -1px -1px 1px black;
+	}
+	
+	a:hover, a:visited, a:link, a:active{
+		color: #ccccff;
+		text-decoration: none;
+	}
+	
+	</style>
+
+	<script src="../libs/three.js/build/three.js"></script>
+	<script src="../libs/three-lg.js"></script>
+	<script src="../libs/socket.io/socket.io.js"></script>
+	<script src="../libs/other/OrbitControls.js"></script>
+	<script src="../libs/other/stats.min.js"></script>
+	<script src="../libs/other/dat.gui.min.js"></script>
+	<script src="../src/Potree.js"></script>
+	<script src="../src/PointCloudOctreeGeometry.js"></script>
+	<script src="../src/PointCloudOctree.js"></script>
+	<script src="../src/loader/POCLoader.js"></script>
+	<script src="../src/loader/PointAttributes.js"></script>
+	<script src="../src/utils.js"></script>
+	<script src="../src/LRU.js"></script>
+
+	
+	
+	<div id="lblNumVisibleNodes" class="info" style="position: absolute; left: 10px; top: 80px; width: 400px; color:white"></div>
+	<div id="lblNumVisiblePoints" class="info" style="position: absolute; left: 10px; top: 100px; width: 400px; color:white"></div>
+	
+	<div class="info" style="position: absolute; left: 300px; right: 300px; top: 10px; text-align: center;">
+		<a href="http://potree.org" target="_blank">potree.org</a><br>
+	</div>
+	
+	<script>
+		var defaultPointSize = 0.03;
+        var guiChanged = false;
+		var defaultLOD = 2;
+		var pointcloudPath = "../resources/pointclouds/pompei/cloud.js";
+
+        var rotationAngle = 30;
+	
+		var renderer;
+		var camera;
+		var cube;
+		var scene;
+		var pointclouds = [];
+		var cameraCube, sceneCube, controls;
+		var stats;
+		var pointcloudMaterial;
+        var visnodes = document.getElementById("lblNumVisibleNodes");
+        var vispoints = document.getElementById("lblNumVisiblePoints");
+		function loadSkybox(){
+			cameraCube = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 100000 );
+			sceneCube = new THREE.Scene();
+		
+			var path = "../resources/textures/skybox/";
+			var format = ".jpg";
+			var urls = [
+				path + "px" + format, path + "nx" + format,
+				path + "py" + format, path + "ny" + format,
+				path + "pz" + format, path + "nz" + format
+			];
+			
+			var textureCube = THREE.ImageUtils.loadTextureCube( urls, new THREE.CubeRefractionMapping() );
+			var material = new THREE.MeshBasicMaterial( { color: 0xffffff, envMap: textureCube, refractionRatio: 0.95 } );
+			
+			var shader = THREE.ShaderLib[ "cube" ];
+			shader.uniforms[ "tCube" ].value = textureCube;
+
+			var material = new THREE.ShaderMaterial( {
+
+				fragmentShader: shader.fragmentShader,
+				vertexShader: shader.vertexShader,
+				uniforms: shader.uniforms,
+				depthWrite: false,
+				side: THREE.BackSide
+
+			} ),
+
+			mesh = new THREE.Mesh( new THREE.BoxGeometry( 100, 100, 100 ), material );
+			sceneCube.add( mesh );
+		}
+		
+		function initGUI(){
+			var gui = new dat.GUI({
+				height : 5 * 32 - 1
+			});
+			
+			var params = {
+				PointSize: defaultPointSize,
+				LOD: defaultLOD
+			};
+			
+			var pLOD = gui.add(params, "LOD", 0.5,20);
+			pLOD.onChange(function(value){
+				//pointCloud.LOD = value;
+                // XXX set a flag here, so I don't have to compare old and new
+                // LOD and pointsize when deciding whether to send a packet
+                guiChanged = true;
+                changeArgs.LOD = value;
+				for(var i = 0; i < pointclouds.length; i++){
+					pointclouds[i].LOD = value;
+				}
+			});
+			
+			var pPointSize = gui.add(params, "PointSize", 0.01, 0.1);
+			pPointSize.onChange(function(value){
+                guiChanged = true;
+                changeArgs.pointsize = value;
+				pointcloudMaterial.size = value;
+			});
+		}
+
+        var scene, camera;
+        var changeArgs     = { LOD: defaultLOD, pointsize: defaultPointSize, target: null, position: null };
+        var lastChangeArgs = { LOD: null, pointsize: null, target: null, position: null };
+
+        var preRenderMaster = function () {
+            // Send a packet to the slave if:
+            //  * We've just initialized  -- or --
+            //  * Something has changed on the GUI -- or --
+            //  * Something has changed in the target or the position
+            // Unless changeArgs.position is null
+
+            if ( changeArgs.position !== null && (
+                    THREELG.justInitialized ||
+                    guiChanged              ||
+                    (lastChangeArgs.position != null &&
+                        Math.abs(changeArgs.position.distanceTo(lastChangeArgs.position)) > 1e-5) ||
+                    (lastChangeArgs.target   != null &&
+                        Math.abs(changeArgs.target.distanceTo(lastChangeArgs.target)) > 1e-5)
+                )) {
+                delete changeArgs.skipSlaveRender;
+                guiChanged = false;
+                THREELG.justInitialized = false;
+            }
+            else {
+                changeArgs.skipSlaveRender = 1;
+            }
+       
+            lastChangeArgs.LOD       = changeArgs.LOD;
+            lastChangeArgs.pointsize = changeArgs.pointsize;
+            if (changeArgs.target !== null) {
+                lastChangeArgs.target    = changeArgs.target.clone();
+            }
+            if (changeArgs.position !== null) {
+                lastChangeArgs.position  = changeArgs.position.clone();
+            }
+            return changeArgs;
+        };
+
+        var preRenderSlave = function (a) {
+            console.log(JSON.stringify(a));
+            camera.position.copy(a.position);
+
+            // target - position, rotated around the Y, plus position
+            var rotateVec = new THREE.Vector3();
+            //var lookAt = new THREE.Vector3(a.target.x, a.target.y, a.target.z);
+
+            rotateVec.subVectors(a.target, a.position).
+                applyAxisAngle(
+                    new THREE.Vector3(0, 1, 0),
+                    rotationAngle * Math.PI / 180
+                ).
+                add(a.position);
+
+            camera.lookAt(rotateVec);
+
+            scene.children.forEach(function(c) { c.LOD = a.LOD; });
+            scene.children[0].material.size = a.pointsize;
+        };
+
+        var changeEvent = function(event) {
+            changeArgs.target = event.target.target.clone();
+            changeArgs.position = event.target.object.position.clone();
+        }
+		
+		var initThree = function (){
+            console.log("This is the initialization function");
+			stats = new Stats();
+			stats.domElement.style.position = 'absolute';
+			stats.domElement.style.top = '0px';
+			stats.domElement.style.margin = '5px';
+			document.body.appendChild( stats.domElement );
+		
+			scene = new THREE.Scene();
+			camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 100000);
+
+			renderer = new THREE.WebGLRenderer();
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			renderer.autoClear = false;
+			document.body.appendChild(renderer.domElement);
+			
+			loadSkybox();
+
+			// camera and controls
+			camera.position.z = 25;
+			camera.position.y = 10;
+			camera.position.x = 15;
+			controls = new THREE.OrbitControls(camera, renderer.domElement);
+			controls.target.set( 0, 3, 0 );
+            if (THREELG.master) {
+                controls.addEventListener('change', changeEvent);
+            }
+			camera.lookAt(controls.target);
+
+			pointcloudMaterial = new THREE.PointCloudMaterial( { size: defaultPointSize, vertexColors: true } );
+			
+			//// load pointcloud
+			var pco = POCLoader.load(pointcloudPath);
+			//pointCloud = new Potree.PointCloudOctree(pco, pointcloudMaterial);
+			//pointCloud.LOD = defaultLOD;
+			//pointCloud.rotation.set(Math.PI,-1.2,0);
+			//pointCloud.moveToOrigin();
+			//pointCloud.moveToGroundPlane();
+			//scene.add(pointCloud);
+			
+var i = 0; var j = 0;
+//			for(var i = -2; i <= 2; i++){
+//				for(var j = -2; j <= 2; j++){
+					var pointcloud = new Potree.PointCloudOctree(pco, pointcloudMaterial);
+					pointcloud.LOD = defaultLOD;
+					//pointcloud.rotation.set(Math.PI,-1.2,0);
+					//pointcloud.rotation.set(Math.PI/2, 0.85* -Math.PI/2, -0.0);
+					pointcloud.moveToOrigin();
+					pointcloud.moveToGroundPlane();
+                    pointcloud.rotation.set( -Math.PI / 2, 0, 0);
+					//pointcloud.position.x += 8*i;
+					//pointcloud.position.z += 8*j;
+					
+					pointclouds.push(pointcloud);
+					scene.add(pointcloud);
+//				}
+//			}
+            return { "scene" : scene, "camera" : camera, "renderer" : renderer };
+		}
+		
+		render = function (initialScene) {
+					
+        //    var camera = initialScene.camera;
+        //    var scene = initialScene.scene;
+            if (undefined !== render) {
+                requestAnimationFrame(render);
+            }
+            else {
+                // for the slave
+                requestAnimationFrame(THREELG.render);
+            }
+			
+			var numVisibleNodes = 0;
+			var numVisiblePoints = 0;
+			for(var i = 0; i < pointclouds.length; i++){
+				var pointcloud = pointclouds[i];
+				pointcloud.update(camera);
+				numVisibleNodes += pointcloud.numVisibleNodes;
+				numVisiblePoints += pointcloud.numVisiblePoints;
+			}
+			
+			// render skybox
+			cameraCube.rotation.copy( camera.rotation );
+			renderer.render( sceneCube, cameraCube );
+			
+			renderer.render(scene, camera);
+			
+            if (undefined !== visnodes) {
+                visnodes.innerHTML = "visible nodes: " + numVisibleNodes;
+                vispoints.innerHTML = "visible points: " + Potree.utils.addCommas(numVisiblePoints);
+                stats.update();
+                controls.update(0.1);
+            }
+			
+		};
+
+        THREE.lg_init('appname', preRenderMaster, preRenderSlave, initThree, render, true);
+		a = initThree();
+        scene = a.scene;
+        camera = a.camera;
+		initGUI();
+		render();
+		
+	</script>
+	
+	
+	
+	
+</body>
+</html>
