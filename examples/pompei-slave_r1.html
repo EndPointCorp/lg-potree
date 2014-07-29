@@ -27,14 +27,14 @@
         var visnodes;
         var controls;
 
-        var rotationAngle = 66;
+        var rotationAngle = -36;
 
         var changeEvent = function(event) {
             newPosition = event.target.object.position;
         }
 		
 		function loadSkybox(){
-			cameraCube = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 100000 );
+			cameraCube = new THREE.PerspectiveCamera( 54, window.innerWidth / window.innerHeight, 1, 100000 );
 			sceneCube = new THREE.Scene();
 		
 			var path = "../resources/textures/skybox/";
